@@ -108,7 +108,7 @@ void main() {
   }
   dsm.subscribe(toDelegate(&handleRequest));
 
-  baos = new BaosLL();
+  baos = new BaosLL(device, params);
   void onCemiFrame(ubyte[] cemi) {
     writeln("cemi frame, friend");
     auto jcast = parseJSON("{}");

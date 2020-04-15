@@ -1,5 +1,6 @@
 import core.thread;
 import std.base64;
+import std.bitmanip;
 import std.json;
 import std.functional;
 import std.stdio;
@@ -8,6 +9,7 @@ import clid;
 import clid.validate;
 
 import baos_ll;
+import cemi;
 import redis_dsm;
 import errors;
 
@@ -93,6 +95,29 @@ void main() {
           jstream.array ~= JSONValue(CEMI_TO_BAOS); // 1 - to bus
           jstream.array ~= jreq["payload"];
           dsm.addToStream(stream_prefix, stream_maxlen, jstream);
+          // process cemi
+          auto mc = cemi.peek!ubyte(0);
+          if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
+            auto decoded = new LData_cEMI(cemi);
+
+            writeln("====================================================");
+            writeln("mc: ", decoded.message_code);
+            writeln("standard: ", decoded.standard);
+            writeln("donorepeat: ", decoded.donorepeat);
+            writeln("sys_broadcast: ", decoded.sys_broadcast);
+            writeln("priority: ", decoded.priority);
+            writeln("ack_requested: ", decoded.ack_requested);
+            writeln("error: ", decoded.error);
+            writeln("address_type_group: ", decoded.address_type_group);
+            writeln("hop_count: ", decoded.hop_count);
+            writeln("source: ", decoded.source);
+            writeln("dest: ", decoded.dest);
+            writeln("tpci: ", decoded.tpci);
+            writeln("apci: ", decoded.apci);
+            writeln("data: ", decoded.data);
+            writeln("toUbytes: ", decoded.toUbytes());
+            writeln("====================================================");
+          }
         } catch(Exception e) {
           res["method"] = "error";
           res["payload"] = e.message;
@@ -121,6 +146,28 @@ void main() {
     jstream.array ~= JSONValue(CEMI_FROM_BAOS); // 1 - to bus
     jstream.array ~= jcast["payload"];
     dsm.addToStream(stream_prefix, stream_maxlen, jstream);
+
+    auto mc = cemi.peek!ubyte(0);
+    if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
+      auto decoded = new LData_cEMI(cemi);
+      writeln("====================================================");
+      writeln("mc: ", decoded.message_code);
+      writeln("standard: ", decoded.standard);
+      writeln("donorepeat: ", decoded.donorepeat);
+      writeln("sys_broadcast: ", decoded.sys_broadcast);
+      writeln("priority: ", decoded.priority);
+      writeln("ack_requested: ", decoded.ack_requested);
+      writeln("error: ", decoded.error);
+      writeln("address_type_group: ", decoded.address_type_group);
+      writeln("hop_count: ", decoded.hop_count);
+      writeln("source: ", decoded.source);
+      writeln("dest: ", decoded.dest);
+      writeln("tpci: ", decoded.tpci);
+      writeln("apci: ", decoded.apci);
+      writeln("data: ", decoded.data);
+      writeln("toUbytes: ", decoded.toUbytes());
+      writeln("====================================================");
+    }
   }
   baos.onCemiFrame = toDelegate(&onCemiFrame);
   writeln("BAOS instance created");

@@ -6,7 +6,7 @@ import std.bitmanip;
 import std.conv;
 import std.stdio;
 
-enum MC {
+enum MC: ubyte {
   unknown,
   LDATA_REQ = 0x11,
   LDATA_CON = 0x2E,
@@ -20,8 +20,50 @@ enum MC {
   MRESET_IND = 0xF0
 }
 
+enum TService {
+  unknown,
+  TDataBroadcast,
+  TDataGroup,
+  TDataTagGroup,
+  TDataIndividual,
+  TDataConnected,
+  TConnect,
+  TDisconnect,
+  TAck,
+  TNack
+}
+
+enum APCI: ushort {
+  AGroupValueRead = 0b0000,
+  AGroupValueResponse = 0b0001,
+  AGroupValueWrite = 0b0010,
+  AIndividualAddressWrite = 0b0011,
+  AIndividualAddressRead = 0b0100,
+  AIndividualAddressResponse = 0b0101,
+  AADCRead = 0b0110,
+  AADCResponse = 0b0111,
+  AMemoryRead = 0b1000,
+  AMemoryResponse = 0b1001,
+  AMemoryWrite = 0b1010,
+  AUserMessage = 0b1011,
+  AUserMemoryRead = 0b1011000000,
+  AUserMemoryResponse = 0b1011000001,
+  AUserMemoryWrite = 0b1011000010,
+  AUserManufacturerInfoRead = 0b1011000101,
+  AUserManufacturerInfoResponse = 0b1011000110,
+  ADeviceDescriptorRead = 0b1100,
+  ADeviceDescriptorResponse = 0b1101,
+  ARestart = 0b1110,
+  AEscape = 0b1111,
+  APropertyValueRead = 0b1111010101,
+  APropertyValueResponse = 0b1111010110,
+  APropertyValueWrite = 0b1111010111,
+  APropertyDescriptionRead = 0b1111011000,
+  APropertyDescriptionResponse = 0b1111011001
+}
+
 class LData_cEMI {
-  public ubyte message_code;
+  public MC message_code;
   public int additional_info_len;
   public ubyte[] additional_info;
 
@@ -41,13 +83,12 @@ class LData_cEMI {
 
   public ushort source;
   public ushort dest;
-  public ubyte apdu_data_len;
-  public ubyte tpdu;
-  public ubyte apdu;
+  public ubyte apci_data_len;
+  public ubyte tpci_apci;
+  public ubyte[] apci_data;
 
   public ubyte tpci;
-  public ubyte apci;
-  public ubyte[] apdu_data;
+  public APCI apci;
   public ubyte[] data;
 
   this() {
@@ -56,7 +97,7 @@ class LData_cEMI {
   this(ubyte[] msg) {
     // parse frame
     auto offset = 0;
-    message_code = msg.peek!ubyte(offset); offset += 1;
+    message_code = cast(MC) msg.peek!ubyte(offset); offset += 1;
     additional_info_len = msg.peek!ubyte(offset); offset += 1;
     additional_info = msg[offset..offset + additional_info_len].dup;
     offset += additional_info_len;
@@ -77,30 +118,34 @@ class LData_cEMI {
     // addresses
     source = msg.peek!ushort(offset); offset += 2;
     dest = msg.peek!ushort(offset); offset += 2;
-    apdu_data_len = msg.peek!ubyte(offset); offset += 1;
-    tpdu = msg.peek!ubyte(offset); offset += 1;
-    apdu_data = msg[offset..offset + apdu_data_len].dup;
+    apci_data_len = msg.peek!ubyte(offset); offset += 1;
+    tpci_apci = msg.peek!ubyte(offset); offset += 1;
+    apci_data = msg[offset..offset + apci_data_len].dup;
     
-    if (apdu_data_len == 0) {
-      tpci = tpdu;
-      //apci = ((tpdu & 0b11) << 2);
+    if (apci_data_len == 0) {
+      tpci = tpci_apci;
+      //apci = ((tpci_apci & 0b11) << 2);
       data.length = 0;
-    } else if (apdu_data_len == 1) {
-      tpci = tpdu >> 2;
-      apci = ((tpdu & 0b11) << 2) | ((apdu_data[0] & 0b11000000) >> 6);
-      data.length = apdu_data.length;
-      data[0] = apdu_data[0] & 0b111111;
-    } else if (apdu_data_len > 1) {
-      tpci = tpdu >> 2;
-      apci = ((tpdu & 0b11) << 2) | ((apdu_data[0] & 0b11000000) >> 6);
-      data.length = apdu_data.length - 1;
-      data[0..$] = apdu_data[1..$];
+    } else if (apci_data_len == 1) {
+      tpci = tpci_apci & 0b11111100;
+      apci = cast(APCI) (((tpci_apci & 0b11) << 2) | ((apci_data[0] & 0b11000000) >> 6));
+      data.length = apci_data.length;
+      data[0] = apci_data[0] & 0b00111111;
+    } else if (apci_data_len > 1) {
+      tpci = tpci_apci & 0b11111100;
+      apci = cast(APCI) (((tpci_apci & 0b11) << 2) | ((apci_data[0] & 0b11000000) >> 6));
+      data.length = apci_data.length - 1;
+      data[0..$] = apci_data[1..$];
+      // TODO: cases like ADCRead/ADCResponse
+      // where data is encoded in next six bits
+    }
+    if (apci == APCI.AUserMessage || apci == APCI.AEscape) {
+      apci = cast(APCI) ((apci << 6) | (apci_data[0] & 0b111111));
     }
   }
   public ubyte[] toUbytes() {
     ubyte[] result;
-    result.length = 10 + additional_info_len + apdu_data_len;
-    writeln("result length: ", result.length);
+    result.length = 10 + additional_info_len + apci_data_len;
     auto offset = 0;
     result.write!ubyte(message_code, offset); offset += 1;
     result.write!ubyte(to!ubyte(additional_info_len & 0xff), offset); offset += 1;
@@ -137,28 +182,69 @@ class LData_cEMI {
     result.write!ushort(source, offset); offset += 2;
     result.write!ushort(dest, offset); offset += 2;
 
-    result.write!ubyte(apdu_data_len, offset); offset += 1;
+    result.write!ubyte(apci_data_len, offset); offset += 1;
 
-    if (apdu_data_len == 0) {
+    if (apci_data_len == 0) {
       result.write!ubyte(tpci, offset); offset += 1;
-    } else if (apdu_data_len == 1) {
-      tpdu = to!ubyte(tpci << 2);
-      tpdu = tpdu | (apci >> 2);
-      result.write!ubyte(tpdu, offset); offset += 1;
-      apdu_data.length = apdu_data_len;
-      apdu_data[0] = (apci & 0b11) << 6;
-      apdu_data[0] = apdu_data[0] | (data[0] & 0b111111);
-      result[offset..$] = apdu_data[0..$];
-    } else if (apdu_data_len > 1) {
-      tpdu = to!ubyte(tpci << 2);
-      tpdu = tpdu | (apci >> 2);
-      result.write!ubyte(tpdu, offset); offset += 1;
-      apdu_data.length = apdu_data_len;
-      apdu_data[0] = (apci & 0b11) << 6;
-      apdu_data[1..$] = data[0..$];
-      result[offset..$] = apdu_data[0..$];
+    } else if (apci_data_len == 1) {
+      tpci_apci = tpci & 0b11111100;
+      if (apci < 0b1111) {
+        tpci_apci = to!ubyte(tpci_apci | ((apci & 0b1111) >> 2));
+      } else {
+        tpci_apci = to!ubyte(tpci_apci | (apci  >> 8));
+      }
+      result.write!ubyte(tpci_apci, offset); offset += 1;
+      apci_data.length = apci_data_len;
+      apci_data[0] = (apci & 0b11) << 6;
+      if (apci < 0b1111) {
+        apci_data[0] = apci_data[0] | (data[0] & 0b111111);
+      } else {
+        apci_data[0] = apci & 0b11111111;
+      }
+      result[offset..$] = apci_data[0..$];
+    } else if (apci_data_len > 1) {
+      tpci_apci = tpci;
+      if (apci < 0b1111) {
+        tpci_apci = to!ubyte(tpci_apci | ((apci & 0b1111) >> 2));
+      } else {
+        tpci_apci = to!ubyte(tpci_apci | (apci  >> 8));
+      }
+      result.write!ubyte(tpci_apci, offset); offset += 1;
+      apci_data.length = apci_data_len;
+      if (apci < 0b1111) {
+        apci_data[0] = (apci & 0b11) << 6;
+        // TODO: cases like ADCRead/ADCResponse
+        // where data is encoded in next six bits
+      } else {
+        apci_data[0] = apci & 0b11111111;
+      }
+      apci_data[1..$] = data[0..$];
+      result[offset..$] = apci_data[0..$];
     }
 
     return result;
+  }
+  public TService getTransportServiceInfo() {
+    bool data_control_flag = to!bool((tpci >> 7) & 0b1);
+    bool numbered = to!bool((tpci >> 6) & 0b1);
+    ubyte seq = to!ubyte((tpci >> 2 ) & 0b1111);
+    if (address_type_group) {
+      // group address
+      if (!data_control_flag && !numbered) {
+        if (dest == 0 && seq == 0) return TService.TDataBroadcast;
+        if (dest != 0 && seq == 0) return TService.TDataGroup;
+        if (seq != 0) return TService.TDataTagGroup;
+      }
+    } else {
+      // individual addr 
+      if (!data_control_flag && !numbered && seq == 0) return TService.TDataIndividual;
+      else if (!data_control_flag && numbered) return TService.TDataConnected;
+      else if (data_control_flag && !numbered && tpci == 0x80) return TService.TConnect;
+      else if (data_control_flag && !numbered && tpci == 0x81) return TService.TDisconnect;
+      else if (data_control_flag && numbered && (tpci & 0b11) == 0b10) return TService.TAck;
+      else if (data_control_flag && numbered && (tpci & 0b11) == 0b10) return TService.TNack;
+    }
+
+    return TService.unknown;
   }
 }

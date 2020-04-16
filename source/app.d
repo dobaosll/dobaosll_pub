@@ -1,4 +1,5 @@
 import core.thread;
+import std.algorithm.comparison : equal;
 import std.base64;
 import std.bitmanip;
 import std.json;
@@ -85,10 +86,12 @@ void main() {
           } catch (Base64Exception) {
             throw Errors.wrong_base64_string;
           }
-          writeln("sengind cemi, friend: ", cemi);
           baos.sendFT12Frame(cemi);
           res["payload"] = true;
           sendResponse(res);
+
+          writeln("====================================================");
+          writeln("sending cemi: ");
 
           // add to redis stream
           auto jstream = parseJSON("[]");
@@ -99,8 +102,7 @@ void main() {
           auto mc = cemi.peek!ubyte(0);
           if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
             auto decoded = new LData_cEMI(cemi);
-
-            writeln("====================================================");
+            writeln("orig frame: ", cemi);
             writeln("mc: ", decoded.message_code);
             writeln("standard: ", decoded.standard);
             writeln("donorepeat: ", decoded.donorepeat);
@@ -113,9 +115,11 @@ void main() {
             writeln("source: ", decoded.source);
             writeln("dest: ", decoded.dest);
             writeln("tpci: ", decoded.tpci);
-            writeln("apci: ", decoded.apci);
+            writeln("apci: ", decoded.apci, " == ", cast(ushort)decoded.apci);
             writeln("data: ", decoded.data);
+            writeln("tservice: ", decoded.getTransportServiceInfo);
             writeln("toUbytes: ", decoded.toUbytes());
+            writeln("original and calculated equal? ", equal(cemi, decoded.toUbytes()));
             writeln("====================================================");
           }
         } catch(Exception e) {
@@ -135,11 +139,13 @@ void main() {
 
   baos = new BaosLL(device, params);
   void onCemiFrame(ubyte[] cemi) {
-    writeln("cemi frame, friend");
     auto jcast = parseJSON("{}");
     jcast["method"] = "cemi from bus";
     jcast["payload"] = Base64.encode(cemi);
     dsm.broadcast(jcast);
+    
+    writeln("====================================================");
+    writeln("received cemi frame: ", cemi);
 
     // add to redis stream
     auto jstream = parseJSON("[]");
@@ -150,7 +156,7 @@ void main() {
     auto mc = cemi.peek!ubyte(0);
     if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
       auto decoded = new LData_cEMI(cemi);
-      writeln("====================================================");
+      writeln("orig frame: ", cemi);
       writeln("mc: ", decoded.message_code);
       writeln("standard: ", decoded.standard);
       writeln("donorepeat: ", decoded.donorepeat);
@@ -163,9 +169,11 @@ void main() {
       writeln("source: ", decoded.source);
       writeln("dest: ", decoded.dest);
       writeln("tpci: ", decoded.tpci);
-      writeln("apci: ", decoded.apci);
+      writeln("apci: ", decoded.apci, " == ", cast(ushort)decoded.apci);
       writeln("data: ", decoded.data);
+      writeln("tservice: ", decoded.getTransportServiceInfo);
       writeln("toUbytes: ", decoded.toUbytes());
+      writeln("original and calculated equal? ", equal(cemi, decoded.toUbytes()));
       writeln("====================================================");
     }
   }

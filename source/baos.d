@@ -59,7 +59,7 @@ class BaosLL {
     request.parity = currentParity;
     request.payload = message[0..$];
     ubyte[] buffer = ft12.compose(request);
-    writeln("baos.d: writing to comport: ", buffer);
+    //writeln("baos.d: writing to comport: ", buffer);
     com.write(buffer);
     sw.reset();
     sw.start();
@@ -86,7 +86,7 @@ class BaosLL {
   }
 
   private void onFT12Frame(FT12Frame frame) {
-    writeln("Received FT12 frame:", frame);
+    //writeln("Received FT12 frame:", frame);
     bool isAck = frame.isAckFrame();
     bool isResetInd = frame.isResetInd();
     bool isDataFrame = frame.isDataFrame();

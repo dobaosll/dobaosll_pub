@@ -102,7 +102,7 @@ void main() {
           auto mc = cemi.peek!ubyte(0);
           if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
             auto decoded = new LData_cEMI(cemi);
-            writeln("orig frame: ", cemi);
+            writefln("orig frame: %(%x %)", cemi);
             writeln("mc: ", decoded.message_code);
             writeln("standard: ", decoded.standard);
             writeln("donorepeat: ", decoded.donorepeat);
@@ -117,8 +117,9 @@ void main() {
             writeln("tpci: ", decoded.tpci);
             writeln("apci: ", decoded.apci, " == ", cast(ushort)decoded.apci);
             writeln("data: ", decoded.data);
-            writeln("tservice: ", decoded.getTransportServiceInfo);
-            writeln("toUbytes: ", decoded.toUbytes());
+            writeln("tservice: ", decoded.tservice);
+            writeln("tsequence: ", decoded.tseq);
+            writefln("toUbytes: %(%x %)", decoded.toUbytes());
             writeln("original and calculated equal? ", equal(cemi, decoded.toUbytes()));
             writeln("====================================================");
           }
@@ -145,7 +146,7 @@ void main() {
     dsm.broadcast(jcast);
     
     writeln("====================================================");
-    writeln("received cemi frame: ", cemi);
+    writefln("received cemi frame: %(%x %)", cemi);
 
     // add to redis stream
     auto jstream = parseJSON("[]");
@@ -156,7 +157,7 @@ void main() {
     auto mc = cemi.peek!ubyte(0);
     if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
       auto decoded = new LData_cEMI(cemi);
-      writeln("orig frame: ", cemi);
+      writefln("orig frame: %(%x %)", cemi);
       writeln("mc: ", decoded.message_code);
       writeln("standard: ", decoded.standard);
       writeln("donorepeat: ", decoded.donorepeat);
@@ -171,8 +172,9 @@ void main() {
       writeln("tpci: ", decoded.tpci);
       writeln("apci: ", decoded.apci, " == ", cast(ushort)decoded.apci);
       writeln("data: ", decoded.data);
-      writeln("tservice: ", decoded.getTransportServiceInfo);
-      writeln("toUbytes: ", decoded.toUbytes());
+      writeln("tservice: ", decoded.tservice);
+      writeln("tsequence: ", decoded.tseq);
+      writefln("toUbytes: %(%x %)", decoded.toUbytes());
       writeln("original and calculated equal? ", equal(cemi, decoded.toUbytes()));
       writeln("====================================================");
     }
@@ -184,6 +186,51 @@ void main() {
   baos.switch2LL();
   writeln("Switching to LinkLayer");
   writeln("Working....");
+
+  /** cemi generation examples
+
+  auto my = new LData_cEMI();
+  my.message_code = MC.LDATA_REQ;
+  my.standard = true;
+  my.donorepeat = true;
+  my.sys_broadcast = true;
+  my.priority = 3;
+  my.address_type_group = true;
+  my.source = 4355;
+  my.dest = 2305;
+  my.tpci = TService.TDataGroup;
+  my.apci_data_len = 3;
+  my.apci = APCI.AGroupValueWrite;
+  my.data = [7, 178];
+  writefln("my to ubytes: %(%x %)", my.toUbytes());
+
+  my = new LData_cEMI();
+  my.message_code = MC.LDATA_REQ;
+  my.source = 0x0000;
+  my.dest = 0x1103;
+  my.tservice = TService.TConnect;
+  writefln("my tconnect to ubytes: %(%x %)", my.toUbytes());
+
+  my = new LData_cEMI();
+  my.message_code = MC.LDATA_REQ;
+  my.source = 0x0000;
+  my.dest = 0x1103;
+  my.tservice = TService.TDataConnected;
+  my.apci = APCI.ADeviceDescriptorRead;
+  my.apci_data_len = 1;
+  my.tiny_data = 0x00;
+  writefln("my tdataconnectd descrread to ubytes: %(%x %)", my.toUbytes());
+
+  my = new LData_cEMI();
+  my.message_code = MC.LDATA_REQ;
+  my.source = 0x0000;
+  my.dest = 0x1103;
+  my.tservice = TService.TDataConnected;
+  my.apci = APCI.ARestart;
+  my.apci_data_len = 1;
+  my.tiny_data = 0x00;
+  writefln("my tdataconnected restart to ubytes: %(%x %)", my.toUbytes());
+  **/
 
   while(true) {
     dsm.processMessages();

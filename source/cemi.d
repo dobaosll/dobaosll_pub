@@ -90,6 +90,9 @@ class LData_cEMI {
   public ubyte tpci;
   public APCI apci;
   public ubyte[] data;
+  
+  // 6bits that goes together with apci, if apci_data_len > 1
+  public ubyte additional_data; 
 
   this() {
     // empty
@@ -136,11 +139,13 @@ class LData_cEMI {
       apci = cast(APCI) (((tpci_apci & 0b11) << 2) | ((apci_data[0] & 0b11000000) >> 6));
       data.length = apci_data.length - 1;
       data[0..$] = apci_data[1..$];
-      // TODO: cases like ADCRead/ADCResponse
+      // cases like ADCRead/ADCResponse
       // where data is encoded in next six bits
+      additional_data = apci_data[0] & 0b111111;
     }
     if (apci == APCI.AUserMessage || apci == APCI.AEscape) {
-      apci = cast(APCI) ((apci << 6) | (apci_data[0] & 0b111111));
+      apci = cast(APCI) ((apci << 6) | additional_data);
+      additional_data = 0;
     }
   }
   public ubyte[] toUbytes() {
@@ -213,8 +218,10 @@ class LData_cEMI {
       apci_data.length = apci_data_len;
       if (apci < 0b1111) {
         apci_data[0] = (apci & 0b11) << 6;
-        // TODO: cases like ADCRead/ADCResponse
+
+        // cases like ADCRead/ADCResponse
         // where data is encoded in next six bits
+        apci_data[0] = apci_data[0] | additional_data;
       } else {
         apci_data[0] = apci & 0b11111111;
       }

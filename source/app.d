@@ -2,6 +2,7 @@ import core.thread;
 import std.algorithm.comparison : equal;
 import std.base64;
 import std.bitmanip;
+import std.digest;
 import std.json;
 import std.functional;
 import std.stdio;
@@ -26,6 +27,10 @@ private struct Config {
   @Parameter("device", 'd')
     @Description("UART device. Setting this argument will overwrite redis key value. Default: /dev/ttyAMA0")
     string device;
+
+  @Parameter("stream", 's')
+    @Description("Add each frame to redis stream. Default: no.")
+    bool stream;
 }
 
 void main() {
@@ -51,8 +56,13 @@ void main() {
   auto cast_channel = dsm.getKey(config_prefix ~ "bcast_channel", "dobaosll_cast", true);
   dsm.setChannels(req_channel, cast_channel);
 
-  auto stream_prefix = dsm.getKey(config_prefix ~ "stream_prefix", "dobaosll_stream_", true);
-  auto stream_maxlen = dsm.getKey(config_prefix ~ "stream_maxlen", "100000", true);
+  bool stream_enabled = config.stream;
+  string stream_name; string stream_maxlen;
+  if (stream_enabled) {
+    stream_name = dsm.getKey(config_prefix ~ "stream_name", "dobaosll_stream", true);
+    stream_maxlen = dsm.getKey(config_prefix ~ "stream_maxlen", "10000", true);
+    writeln("Reddis stream feature enabled");
+  }
 
   void handleRequest(JSONValue jreq, void delegate(JSONValue) sendResponse) {
     JSONValue res;
@@ -94,10 +104,9 @@ void main() {
           writeln("sending cemi: ");
 
           // add to redis stream
-          auto jstream = parseJSON("[]");
-          jstream.array ~= JSONValue(CEMI_TO_BAOS); // 1 - to bus
-          jstream.array ~= jreq["payload"];
-          dsm.addToStream(stream_prefix, stream_maxlen, jstream);
+          if (stream_enabled) {
+            dsm.addToStream(stream_name, stream_maxlen, cemi.toHexString());
+          }
           // process cemi
           auto mc = cemi.peek!ubyte(0);
           if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {
@@ -149,10 +158,9 @@ void main() {
     writefln("received cemi frame: %(%x %)", cemi);
 
     // add to redis stream
-    auto jstream = parseJSON("[]");
-    jstream.array ~= JSONValue(CEMI_FROM_BAOS); // 1 - to bus
-    jstream.array ~= jcast["payload"];
-    dsm.addToStream(stream_prefix, stream_maxlen, jstream);
+    if (stream_enabled) {
+      dsm.addToStream(stream_name, stream_maxlen, cemi.toHexString());
+    }
 
     auto mc = cemi.peek!ubyte(0);
     if (mc == MC.LDATA_REQ || mc == MC.LDATA_CON || mc == MC.LDATA_IND) {

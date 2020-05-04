@@ -107,12 +107,12 @@ class RedisDsm {
   public string setKey(string key, string value) {
     return redis.send("SET " ~ key ~ " " ~ value).toString();
   }
-  public void addToStream(string key_prefix, string maxlen, JSONValue data) {
+  public void addToStream(string key_name, string maxlen, string data) {
     auto command = "XADD ";
-    command ~= key_prefix ~ data.array[0].str ~ " ";
+    command ~= key_name ~ " ";
     command ~= "MAXLEN ~ " ~ to!string(maxlen) ~ " ";
     command ~= "* "; // id
-    command ~= "payload " ~ data.array[1].toJSON() ~ " ";
+    command ~= "payload " ~ data ~ " ";
     redis.send(command);
   }
 }
